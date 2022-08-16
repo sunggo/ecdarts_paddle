@@ -1,0 +1,27 @@
+2022-08-15 21:38:15,323 args = Namespace(arch="Genotype(normal=[[('sep_conv_3x3', 1), ('avg_pool_3x3', 0)], [('max_pool_3x3', 2), ('skip_connect', 1)], [('max_pool_3x3', 3), ('max_pool_3x3', 2)], [('avg_pool_3x3', 4), ('max_pool_3x3', 3)]], normal_concat=range(2, 6), reduce=[[('sep_conv_3x3', 0), ('dil_conv_3x3', 1)], [('max_pool_3x3', 2), ('skip_connect', 1)], [('max_pool_3x3', 3), ('skip_connect', 1)], [('max_pool_3x3', 3), ('skip_connect', 1)]], reduce_concat=range(2, 6))", aux_weight=0.4, batch_size=128, cutout_length=16, dataset='cifar10', drop_path_prob=0.2, epochs=100, gpus=[3], grad_clip=5.0, init_channels=34, local_rank=0, lr=0.025, momentum=0.9, n_layers=20, note='try', print_freq=500, save='checkpoints/retraineval-try-20220815-213815', seed=2, train_dir='/data/zqq/datasets/', use_aa=False, val_dir='/data/zqq/datasets/', weight_decay=0.0003, workers=16, world_size=8)
+2022-08-15 21:38:15,324 unparsed_args = []
+2022-08-15 21:38:15,324 Genotype(normal=[[('sep_conv_3x3', 1), ('avg_pool_3x3', 0)], [('max_pool_3x3', 2), ('skip_connect', 1)], [('max_pool_3x3', 3), ('max_pool_3x3', 2)], [('avg_pool_3x3', 4), ('max_pool_3x3', 3)]], normal_concat=range(2, 6), reduce=[[('sep_conv_3x3', 0), ('dil_conv_3x3', 1)], [('max_pool_3x3', 2), ('skip_connect', 1)], [('max_pool_3x3', 3), ('skip_connect', 1)], [('max_pool_3x3', 3), ('skip_connect', 1)]], reduce_concat=range(2, 6))
+2022-08-15 21:38:24,959 param size = 2.081919MB
+2022-08-15 21:38:24,963 Epoch: 0 lr 2.498767e-02
+2022-08-15 21:38:30,445 TRAIN Step: 000 Objs: 3.374546e+00 R1: 0.109375 R5: 0.570312
+2022-08-15 21:39:57,147 TRAIN Step: 390 Objs: 2.868067e+00 R1: 0.266180 R5: 0.799860
+2022-08-15 21:39:57,210 Train_acc: 0.266180
+2022-08-15 21:39:58,246 VALID Step: 000 Objs: 1.659657e+00 R1: 0.398438 R5: 0.898438
+2022-08-15 21:40:04,255 VALID Step: 078 Objs: 1.834630e+00 R1: 0.377300 R5: 0.885900
+2022-08-15 21:40:04,409 Valid_acc_top1: 0.377300
+2022-08-15 21:40:04,573 Epoch: 1 lr 2.495685e-02
+2022-08-15 21:40:05,733 TRAIN Step: 000 Objs: 2.511376e+00 R1: 0.375000 R5: 0.867188
+2022-08-15 21:41:32,777 TRAIN Step: 390 Objs: 2.253434e+00 R1: 0.409440 R5: 0.901000
+2022-08-15 21:41:32,959 Train_acc: 0.409440
+2022-08-15 21:41:34,012 VALID Step: 000 Objs: 1.394868e+00 R1: 0.531250 R5: 0.945312
+2022-08-15 21:41:39,809 VALID Step: 078 Objs: 1.487137e+00 R1: 0.481000 R5: 0.928500
+2022-08-15 21:41:39,947 Valid_acc_top1: 0.481000
+2022-08-15 21:41:40,111 Epoch: 2 lr 2.491375e-02
+2022-08-15 21:41:41,332 TRAIN Step: 000 Objs: 2.100536e+00 R1: 0.437500 R5: 0.914062
+2022-08-15 21:43:06,519 TRAIN Step: 390 Objs: 1.903541e+00 R1: 0.504100 R5: 0.931760
+2022-08-15 21:43:06,684 Train_acc: 0.504100
+2022-08-15 21:43:07,691 VALID Step: 000 Objs: 1.147022e+00 R1: 0.554688 R5: 0.945312
+2022-08-15 21:43:13,911 VALID Step: 078 Objs: 1.169765e+00 R1: 0.571600 R5: 0.954100
+2022-08-15 21:43:14,038 Valid_acc_top1: 0.571600
+2022-08-15 21:43:14,188 Epoch: 3 lr 2.485842e-02
+2022-08-15 21:43:15,366 TRAIN Step: 000 Objs: 1.675353e+00 R1: 0.609375 R5: 0.960938
