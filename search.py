@@ -16,12 +16,13 @@ import utils
 import logging
 from models.search_cnn import Network
 from architect import Architect
+#from architect import Architect
 from visualize import plot
 from lib.datasets.imagenet import get_search_datasets
 from lib.datasets.tiny_imagenet import get_tiny_datasets
 from model import IST
 #from lib.datasets.imagenet import get_imagenet_iter_dali
-os.environ['CUDA_VISIBLE_DEVICES']='0'
+os.environ['CUDA_VISIBLE_DEVICES']='1'
 
 
 parser = argparse.ArgumentParser("Search config")
@@ -57,7 +58,7 @@ args = parser.parse_args()
 
 if args.gpus == 'all':
     #paddle.device.cuda.device_count()
-    args.gpus = [0]#list(range(1))
+    args.gpus = [1]#list(range(1))
 else:
     args.gpus = [int(s) for s in args.gpus.split(',')]
 args.save = '{}search-{}-{}'.format(args.save, args.note, time.strftime("%Y%m%d-%H%M%S"))
@@ -86,7 +87,7 @@ def main():
     logging.info("Logger is set - training start")
 
     # set default gpu device id
-    paddle.set_device('gpu:{}'.format(0))
+    paddle.set_device('gpu:{}'.format(1))
 
     # set seed
     g=paddle.seed(args.seed)
@@ -140,8 +141,9 @@ def main():
 
     
      
-    architect = Architect(model, args.w_momentum, args.w_weight_decay,args.w_lr,args.w_grad_clip)
-
+    #architect = Architect(model, args.w_momentum, args.w_weight_decay,args.w_lr,args.w_grad_clip)
+    architect = Architect(model=model,eta=args.w_lr,arch_learning_rate=args.alpha_lr,unrolled=True,parallel=False,optim=alpha_optim)
+    
     # training loop
     best_top1 = 0.
     is_best = True
@@ -216,8 +218,9 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
 
         # phase 2. architect step (alpha)
         alpha_optim.clear_grad()
-        architect.unrolled_backward(trn_X, trn_y, val_X, val_y, lr, w_optim)#计算alpha的梯度
-        alpha_optim.step()
+        architect.step(trn_X, trn_y, val_X, val_y)
+        #architect.unrolled_backward(trn_X, trn_y, val_X, val_y, lr, w_optim)#计算alpha的梯度
+        #alpha_optim.step()
 
         w_optim.clear_grad()
         logits = model(trn_X)
