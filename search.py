@@ -142,7 +142,7 @@ def main():
     
      
     #architect = Architect(model, args.w_momentum, args.w_weight_decay,args.w_lr,args.w_grad_clip)
-    architect = Architect(model=model,eta=args.w_lr,arch_learning_rate=args.alpha_lr,unrolled=True,parallel=False,optim=alpha_optim)
+    architect = Architect(model=model,eta=args.w_lr,arch_learning_rate=args.alpha_lr,unrolled=True,parallel=False)
     
     # training loop
     best_top1 = 0.
