@@ -17,3 +17,7 @@ Architecture:
 Accuracy on nasbench 301:
 
 &ensp;&ensp;93.575216
+
+Accuracy after retraining :
+
+&ensp;&ensp;95.48
