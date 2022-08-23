@@ -124,16 +124,14 @@ def main():
                                    weight_decay=args.alpha_weight_decay)
     # weights optimizer
     lr_scheduler = optim.lr.CosineAnnealingDecay(learning_rate=args.w_lr,
-        T_max= args.epochs, eta_min=args.w_lr_min)
+        T_max= int(args.epochs/2), eta_min=args.w_lr_min)
     w_optim=optim.Momentum(learning_rate=lr_scheduler,parameters=model.weights(),
                               weight_decay=args.w_weight_decay,grad_clip=nn.ClipGradByNorm(args.w_grad_clip),momentum=args.w_momentum)
-    #w_optim = optim.SGD(learning_rate=lr_scheduler,parameters=model.weights(), 
-    #                          weight_decay=args.w_weight_decay,grad_clip=nn.ClipGradByNorm(args.w_grad_clip))
+   
 
     lr_scheduler_aux = optim.lr.CosineAnnealingDecay(
-        learning_rate=args.w_lr, T_max=args.epochs, eta_min=args.w_lr_min)
-    #w_optim_aux = optim.SGD(learning_rate=lr_scheduler_aux ,parameters=model.weights(),
-    #                          weight_decay=args.w_weight_decay,grad_clip=nn.ClipGradByNorm(args.w_grad_clip))
+        learning_rate=args.w_lr, T_max=int(args.epochs/2), eta_min=args.w_lr_min)
+    
     w_optim_aux=optim.Momentum(learning_rate=lr_scheduler_aux,parameters=model.weights(),
                               weight_decay=args.w_weight_decay,grad_clip=nn.ClipGradByNorm(args.w_grad_clip),momentum=args.w_momentum)
     alpha_optim_aux = optim.Adam(learning_rate=args.alpha_lr,parameters=model.alphas(), beta1=0.5, beta2=0.999,
@@ -141,8 +139,7 @@ def main():
 
     
      
-    #architect = Architect(model, args.w_momentum, args.w_weight_decay,args.w_lr,args.w_grad_clip)
-    architect = Architect(model=model,eta=args.w_lr,arch_learning_rate=args.alpha_lr,unrolled=True,parallel=False)
+    architect = Architect(model, args.w_momentum, args.w_weight_decay,args.w_lr,args.w_grad_clip)
     
     # training loop
     best_top1 = 0.
@@ -214,13 +211,12 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
     for step, (data_train, data_val) in enumerate(zip(train_loader, valid_loader)):
         trn_X, trn_y = data_train[0], data_train[1]
         val_X, val_y = data_val[0], data_val[1]
-        N = trn_X.size
+        N = trn_X.shape[0]
 
         # phase 2. architect step (alpha)
         alpha_optim.clear_grad()
-        architect.step(trn_X, trn_y, val_X, val_y)
-        #architect.unrolled_backward(trn_X, trn_y, val_X, val_y, lr, w_optim)#计算alpha的梯度
-        #alpha_optim.step()
+        architect.unrolled_backward(trn_X, trn_y, val_X, val_y, lr, w_optim)#计算alpha的梯度
+        alpha_optim.step()
 
         w_optim.clear_grad()
         logits = model(trn_X)
@@ -228,7 +224,6 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
         loss.backward()
         # gradient clipping
         
-        #clip_grad_value_(model.weights(), args.w_grad_clip)  #clip_grad防止梯度爆炸
         w_optim.step()
 
         prec1, prec5 = utils.accuracy(logits, trn_y, topk=(1, 5))

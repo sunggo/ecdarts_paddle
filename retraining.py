@@ -16,7 +16,7 @@ import utils
 from models.augment_cnn import AugmentCNN
 from lib.datasets.imagenet import get_augment_datasets
 from lib.datasets.tiny_imagenet import get_tiny_datasets
-import torch.backends.cudnn as cudnn
+#import torch.backends.cudnn as cudnn
 import paddle.optimizer as optim
 os.environ['CUDA_VISIBLE_DEVICES']='3'
 
@@ -113,7 +113,7 @@ def main():
     # weights optimizer
     
 
-    lr_scheduler = optim.lr.CosineAnnealingDecay(learning_rate=args.lr,T_max= args.epochs, eta_min=0,last_epoch=-1)
+    lr_scheduler = optim.lr.CosineAnnealingDecay(learning_rate=args.lr,T_max= int(args.epochs/2), eta_min=0,last_epoch=-1)
     optimizer=optim.Momentum(learning_rate=lr_scheduler,parameters= model.parameters(),weight_decay=args.weight_decay,
                             grad_clip=nn.ClipGradByNorm(args.grad_clip),momentum=args.momentum)
     #optimizer = optim.SGD(learning_rate=lr_scheduler,parameters= model.parameters(), 
@@ -160,7 +160,7 @@ def train(train_loader, model, optimizer, criterion, epoch):
         # X = data[0]["data"].cuda()
         # y = data[0]["label"].squeeze().long().cuda()
         #X, y = X.cuda(), y.cuda()
-        N = X.size
+        N = X.shape[0]
 
         optimizer.clear_grad()
         logits, aux_logits = model(X)

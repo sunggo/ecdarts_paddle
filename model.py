@@ -18,7 +18,6 @@ def clip_grad_value_(parameters, clip_value):
 
 def IST(args, train_loader, valid_loader, model, architect, alpha_optim, aux_net_crit, aux_w_optim, lr_scheduler_aux, epoch,
         logging):
-    #aux_w_optim.step()
     lr_scheduler_aux.step()
     lr = lr_scheduler_aux.get_lr()
     save_path = args.save_path + 'one-shot_params.pt'
@@ -27,23 +26,13 @@ def IST(args, train_loader, valid_loader, model, architect, alpha_optim, aux_net
 
     pretrained_dict = {k: v for k, v in pretrained_dict.items() if 'alpha' not in k}
 
-    #  aux_net_crit = nn.CrossEntropyLoss().to(device)
 
-    # construct an auxiliary model
     aux_model = Network(args, aux_net_crit, aux=True, alpha_normal=model.alpha_normal, alpha_reduce=model.alpha_reduce,
                             device_ids=args.gpus)
     aux_model_dict = aux_model.state_dict()
     aux_model_dict.update(pretrained_dict)
     aux_model.set_state_dict(aux_model_dict)
-#    aux_model = aux_model
-    # weights optimizer
-    #  aux_w_optim = torch.optim.SGD(aux_model.weights(), args.w_lr, momentum=args.w_momentum,
-    #                             weight_decay=args.w_weight_decay)
-    # # alphas optimizer
-    # aux_alpha_optim = torch.optim.Adam(aux_model.alphas(), args.alpha_lr, betas=(0.5, 0.999),
-    #                                 weight_decay=args.alpha_weight_decay)
 
-    # aux_architect = Architect(aux_model, args.w_momentum, args.w_weight_decay)
     top1 = utils.AverageMeter()
     top5 = utils.AverageMeter()
     losses = utils.AverageMeter()
@@ -52,23 +41,14 @@ def IST(args, train_loader, valid_loader, model, architect, alpha_optim, aux_net
 
     aux_model.train()
     for step, ((trn_X, trn_y), (val_X, val_y)) in enumerate(zip(train_loader, valid_loader)):
-        # trn_X, trn_y = trn_X.cuda(), trn_y.cuda()
-        # val_X, val_y = val_X.cuda(), val_y.cuda()
-        N = trn_X.size
-
-        # # # phase 2. architect step (alpha)
-        # alpha_optim.zero_grad()
-        # architect.unrolled_backward(trn_X, trn_y, val_X, val_y, lr, aux_w_optim)
-        # alpha_optim.step()
+       
+        N = trn_X.shape[0]
 
         aux_w_optim.clear_grad()
         logits = aux_model(trn_X)
 
         loss = aux_model.criterion(logits, trn_y)
         loss.backward()
-        # gradient clipping
-        #nn.utils.clip_grad_norm_(aux_model.weights(), args.w_grad_clip)
-        #clip_grad_value_(aux_model.weights(), args.w_grad_clip)
         aux_w_optim.step()
 
         prec1, prec5 = utils.accuracy(logits, trn_y, topk=(1, 5))

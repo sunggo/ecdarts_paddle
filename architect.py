@@ -1,183 +1,147 @@
-# Copyright (c) 2020 PaddlePaddle Authors. All Rights Reserved
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import paddle.fluid as fluid
-from paddle.fluid.dygraph.base import to_variable
+""" Architect controls architecture of cell by computing gradients of alphas """
 import copy
+import paddle
+#import torch
+from numpy.linalg import eigvals
+import numpy as np
+#from paddle.autograd
+#from torch.autograd import Variable
+import pdb
+from paddle.fluid.dygraph.base import to_variable
+from paddle import fluid
+#from search import args
+import paddle.nn as nn
+import  paddle.optimizer as optim
+class Architect():
+    """ Compute gradients of alphas """
+    def __init__(self, net, w_momentum, w_weight_decay,w_lr,w_grad_clip):
+        """
+        Args:
+            net
+            w_momentum: weights momentum
+        """
+        self.net = net
+        self.v_net = copy.deepcopy(net)
+        for p,pv in zip(self.net.parameters(),self.v_net.parameters()):
+            if p.stop_gradient==True:
+                pv.stop_gradient=True
+        self.w_momentum = w_momentum
+        self.w_weight_decay = w_weight_decay
+        self.hessian = None
+        self.vw_optim=optim.Momentum(learning_rate=w_lr,parameters=self.v_net.weights(),
+                              weight_decay=w_weight_decay,grad_clip=nn.ClipGradByNorm(w_grad_clip),momentum=w_momentum)
 
-class Architect(object):
-    def __init__(self, model, eta, arch_learning_rate, unrolled, parallel):
-        self.network_momentum = 0.9
-        self.network_weight_decay = 3e-4
-        self.eta = eta
-        self.model = model
-        #self.optimizer=optim
-        self.optimizer = fluid.optimizer.Adam(
-            arch_learning_rate,
-            0.5,
-            0.999,
-            regularization=fluid.regularizer.L2Decay(1e-3),
-            parameter_list=self.model.alphas())
-        self.unrolled = unrolled
-        self.parallel = parallel
-        if self.unrolled:
-            self.unrolled_model = copy.deepcopy(self.model)#.new()
-            for p,pv in zip(self.model.parameters(),self.unrolled_model.parameters()):
-                if p.stop_gradient==True:
-                    pv.stop_gradient=True
-            self.unrolled_model_params = [
-                p for p in self.unrolled_model.parameters()
-                if p.name not in [
-                    a.name for a in self.unrolled_model.alphas()
-                ] and p.trainable and not p.stop_gradient
-            ]
-            self.unrolled_optimizer = fluid.optimizer.MomentumOptimizer(
-                self.eta,
-                self.network_momentum,
-                regularization=fluid.regularizer.L2DecayRegularizer(
-                    self.network_weight_decay),
-                parameter_list=self.unrolled_model_params)
+    def virtual_step(self, trn_X, trn_y, xi, w_optim):
+        """
+        Compute unrolled weight w' (virtual step)
 
-        if self.parallel:
-            strategy = fluid.dygraph.parallel.prepare_context()
-            self.parallel_model = fluid.dygraph.parallel.DataParallel(
-                self.model, strategy)
-            if self.unrolled:
-                self.parallel_unrolled_model = fluid.dygraph.parallel.DataParallel(
-                    self.unrolled_model, strategy)
+        Step process:
+        1) forward
+        2) calc loss
+        3) compute gradient (by backprop)
+        4) update gradient
 
-    def get_model(self):
-        return self.parallel_model if self.parallel else self.model
-
-    def step(self, input_train, target_train, input_valid, target_valid):
-        if self.unrolled:
-            params_grads = self._backward_step_unrolled(
-                input_train, target_train, input_valid, target_valid)
-            self.optimizer.apply_gradients(params_grads)
-        else:
-            loss = self._backward_step(input_valid, target_valid)
-            self.optimizer.minimize(loss)
-        self.optimizer.clear_gradients()
-
-    def _backward_step(self, input_valid, target_valid):
-        loss = self.model.loss(input_valid, target_valid)
-        if self.parallel:
-            loss = self.parallel_model.scale_loss(loss)
-            loss.backward()
-            self.parallel_model.apply_collective_grads()
-        else:
-            loss.backward()
-        return loss
-
-    def _backward_step_unrolled(self, input_train, target_train, input_valid,
-                                target_valid):
-        self._compute_unrolled_model(input_train, target_train)
-        unrolled_loss = self.unrolled_model.loss(input_valid, target_valid)
-
-        if self.parallel:
-            unrolled_loss = self.parallel_unrolled_model.scale_loss(
-                unrolled_loss)
-            unrolled_loss.backward()
-            self.parallel_unrolled_model.apply_collective_grads()
-        else:
-            unrolled_loss.backward()
-
-        vector = [
-            to_variable(param._grad_ivar().numpy())
-            for param in self.unrolled_model_params
-        ]
-        arch_params_grads = [
-            (alpha, to_variable(ualpha._grad_ivar().numpy()))
-            for alpha, ualpha in zip(self.model.alphas(),
-                                     self.unrolled_model.alphas())
-        ]
-        self.unrolled_model.clear_gradients()
-
-        implicit_grads = self._hessian_vector_product(vector, input_train,
-                                                      target_train)
-        for (p, g), ig in zip(arch_params_grads, implicit_grads):
-            new_g = g - (ig * self.unrolled_optimizer.current_step_lr())
-            fluid.layers.assign(new_g.detach(), g)
-        return arch_params_grads
-
-    def _compute_unrolled_model(self, input, target):
-        for x, y in zip(self.unrolled_model.parameters(),
-                        self.model.parameters()):
+        Args:
+            xi: learning rate for virtual gradient step (same as weights lr)
+            w_optim: weights optimizer
+        """
+        # forward & calc loss
+        for x, y in zip(self.v_net.parameters(),self.net.parameters()):
             fluid.layers.assign(y.detach(), x)
+        
+        loss = self.v_net.loss(trn_X, trn_y) # L_trn(w)
+        loss.backward()
+        #lr=w_optim.get_lr()
+        self.vw_optim.set_lr(xi)
+        self.vw_optim.step()
+        self.v_net.clear_gradients()
 
-        loss = self.unrolled_model.loss(input, target)
-        if self.parallel:
-            loss = self.parallel_unrolled_model.scale_loss(loss)
-            loss.backward()
-            self.parallel_unrolled_model.apply_collective_grads()
-        else:
-            loss.backward()
+        
+    def unrolled_backward(self, trn_X, trn_y, val_X, val_y, xi, w_optim):#计算alpha的梯度
+        """ Compute unrolled loss and backward its gradients
+        Args:
+            xi: learning rate for virtual gradient step (same as net lr)
+            w_optim: weights optimizer - for virtual step
+        """
+        self.virtual_step(trn_X, trn_y, xi, w_optim)
+        loss = self.v_net.loss(val_X, val_y) # L_val(w`)
+        loss.backward()
+        dalpha = [
+            to_variable(param[1]._grad_ivar().numpy())
+            for param in self.v_net._alphas
+        ]
+        dw = [
+            to_variable(param._grad_ivar().numpy())
+            for param in self.v_net.weights()
+        ]
+        self.v_net.clear_gradients()
+        hessian = self.compute_hessian(dw, trn_X, trn_y)
+        with paddle.no_grad():
+            for alpha, da, h in zip(self.net.alphas(), dalpha, hessian):
+                alpha.grad.set_value( da - xi*h)
+        
 
-        self.unrolled_optimizer.minimize(loss)
-        self.unrolled_model.clear_gradients()
-
-    def _hessian_vector_product(self, vector, input, target, r=1e-2):
-        R = r * fluid.layers.rsqrt(
+    def compute_hessian(self, dw, trn_X, trn_y,r=0.01):
+        # """
+        # dw = dw` { L_val(w`, alpha) }
+        # w+ = w + eps * dw
+        # w- = w - eps * dw
+        # hessian = (dalpha { L_trn(w+, alpha) } - dalpha { L_trn(w-, alpha) }) / (2*eps)
+        # eps = 0.01 / ||dw||
+        # """
+        eps=r * fluid.layers.rsqrt(
             fluid.layers.sum([
-                fluid.layers.reduce_sum(fluid.layers.square(v)) for v in vector
+                fluid.layers.reduce_sum(fluid.layers.square(v)) for v in dw
             ]))
 
-        model_params = [
-            p for p in self.model.parameters()
-            if p.name not in [a.name for a in self.model.alphas()] and
-            p.trainable
+        # w+ = w + eps*dw`
+        with paddle.no_grad():
+            for p, d in zip(self.net.weights(), dw):
+                #if d is not None:
+                p += eps * d
+        loss = self.net.loss(trn_X, trn_y)
+        loss.backward()
+        dalpha_pos = [
+            to_variable(param[1]._grad_ivar().numpy())
+            for param in self.net._alphas
         ]
-        for param, grad in zip(model_params, vector):
-            param_p = param + grad * R
-            fluid.layers.assign(param_p.detach(), param)
-        loss = self.model.loss(input, target)
-        if self.parallel:
-            loss = self.parallel_model.scale_loss(loss)
-            loss.backward()
-            self.parallel_model.apply_collective_grads()
-        else:
-            loss.backward()
-
-        grads_p = [
-            to_variable(param._grad_ivar().numpy())
-            for param in self.model.alphas()
+        with paddle.no_grad():
+            for p, d in zip(self.net.weights(), dw):
+                if d is not None:
+                    p -= 2. * eps * d
+        self.net.clear_gradients()
+        loss = self.net.loss(trn_X, trn_y)
+        loss.backward()
+        dalpha_neg = [
+            to_variable(param[1]._grad_ivar().numpy())
+            for param in self.net._alphas
         ]
+        
+        with paddle.no_grad():
+            for p, d in zip(self.net.weights(), dw):
+                if d is not None:
+                    p += eps * d
+        self.net.clear_gradients()
+        hessian = [(p-n) /(2.*eps) for p, n in zip(dalpha_pos, dalpha_neg)]
+        
 
-        for param, grad in zip(model_params, vector):
-            param_n = param - grad * R * 2
-            fluid.layers.assign(param_n.detach(), param)
-        self.model.clear_gradients()
 
-        loss = self.model.loss(input, target)
-        if self.parallel:
-            loss = self.parallel_model.scale_loss(loss)
-            loss.backward()
-            self.parallel_model.apply_collective_grads()
-        else:
-            loss.backward()
-
-        grads_n = [
-            to_variable(param._grad_ivar().numpy())
-            for param in self.model.alphas()
-        ]
-        for param, grad in zip(model_params, vector):
-            param_o = param + grad * R
-            fluid.layers.assign(param_o.detach(), param)
-        self.model.clear_gradients()
-        arch_grad = [(p - n) / (2 * R) for p, n in zip(grads_p, grads_n)]
-        return arch_grad
+        self.hessian = hessian
+        
+        
+        return hessian
+    
+    def compute_eigenvalues(self):
+        #hessian = self.compute_Hw(input, target)
+        if self.hessian is None:
+            raise ValueError
+        mm = []
+        i=0
+        for t in self.hessian :
+            if i == 0:
+                mm=t.value.cpu().numpy()
+                i=1
+            else:
+                mm = np.row_stack((mm, t.value.cpu().numpy()))
+        print(mm.shape)
+        return eigvals(mm)
